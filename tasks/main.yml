@@ -1,0 +1,103 @@
+---
+
+- name: Add libvirt group
+  group:
+    name: libvirt
+    state: present
+    system: yes
+
+
+- name: Add libvirt group
+  group:
+    name: libvirt-qemu
+    state: present
+    system: yes
+
+
+
+- name: Install Packages
+  apt:
+    pkg:
+      - bash
+      - qemu-kvm
+      # - libvirt-bin # FIXME: needed for ubuntu <= ubuntu 18.04
+      - libvirt-clients
+      - libvirt-daemon
+      - libvirt-daemon-system
+      - qemu-kvm
+      - qemu-efi # FIXME: only for available systems
+      - lxd
+      - maas-cli
+
+
+- name: Add virsh user
+  user:
+    name: virsh
+    comment: Virsh remote admin user
+    shell: "/bin/rbash"
+    password_lock: no
+    password: "{{ virsh_password | password_hash('sha512') }}" # TODO: autogenerate
+    generate_ssh_key: yes
+    groups:
+      - libvirt
+      - libvirt-qemu
+
+
+- name: Create ~/bin direcotry
+  file:
+    path: /home/virsh/bin
+    state: directory
+    # mode: '0755'
+
+
+- name: Create ~/bin/virsh symlink
+  file:
+    src: /usr/bin/virsh
+    dest: /home/virsh/bin/virsh
+    owner: virsh
+    group: virsh
+    state: link
+
+
+- name: Add path to .bashrc
+  lineinfile:
+    path: "/home/virsh/.bashrc"
+    regexp: "^PATH=/home/virsh/bin$"
+    line: "PATH=/home/virsh/bin"
+    state: present
+    create: yes
+    insertafter: EOF
+
+
+- name: Insert/Update "Match User" configuration block in /etc/ssh/sshd_config
+  blockinfile:
+    path: /etc/ssh/sshd_config
+    block: |
+      Match User virsh
+        X11Forwarding no
+        AllowTcpForwarding no
+        PermitTTY no
+        ForceCommand nc -q 0 -U /var/run/libvirt/libvirt-sock
+      
+
+- name: restart service sshd
+  systemd:
+    state: restarted
+    enabled: yes
+    name: ssh
+    masked: no
+
+
+# FIXME: setup libvirt/kvm bridge ...
+# - name: 
+
+
+- name: login to maas for maintenance
+  # maas login {{ maas_profile }} {{ maas_url }} - < {{ maas_api_key }}
+  shell: 
+    cmd: "maas login {{ maas_profile }} {{ maas_url }} - "
+    stdin: '{{ maas_api_key }}'
+
+
+- name: create maas virsh kvm password
+  shell: maas admin pods create type=virsh power_address={{ ansible_default_ipv4.address }} power_user=virsh power_pass="{{ virsh_password }}"

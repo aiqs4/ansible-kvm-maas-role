@@ -1,0 +1,9 @@
+
+
+virsh_password: Secret
+
+
+maas_profile: admin
+maas_url: "http://localhost:5240/MAAS"
+maas_api_key: "My Secret API Key"
+
